@@ -113,7 +113,7 @@ my $queued = 0;
 for($x = 1; $x <= 3; $x++) {
 	$output = `$snmp_cmd -c $community $address $oid{'queuedmessages'}.$x`;
 	if($output =~ /Gauge32: (\d*)/) {
-		$queuesize += $1;
+		$queued += $1;
 	}
 	else {
 		die "Error in SNMP output\n";
