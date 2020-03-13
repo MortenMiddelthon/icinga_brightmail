@@ -14,8 +14,10 @@
 #         BUGS:  Most likely
 #        NOTES:  ---
 #       AUTHOR:  Morten A. Middelthon (mm), mm@lastfriday.no
-#      VERSION:  1.0
+# 		UPDATE:  https://github.com/boupjof
+#      VERSION:  1.1
 #      CREATED:  09. april 2015 kl. 14.50 +0200
+#		UPDATE:	 13/03/2020
 #     REVISION:  ---
 #===============================================================================
 
@@ -53,15 +55,15 @@ my $load_warning = 3;
 my $load_critical = 4;
 my $connections_warning = 50;
 my $connections_critical = 70;
-my $queued_warning = 10;
-my $queued_critical = 20;
+my $queued_warning = 50;
+my $queued_critical = 100;
 my $mem_warning = 95;
 my $mem_critical = 99;
 
 # Define OIDs
 my %oid = (
-	'load_5'			=> ".1.3.6.1.4.1.2021.10.1.3.1",
-	'load_10'			=> ".1.3.6.1.4.1.2021.10.1.3.2",
+	'load_1'			=> ".1.3.6.1.4.1.2021.10.1.3.1",
+	'load_5'			=> ".1.3.6.1.4.1.2021.10.1.3.2",
 	'load_15'			=> ".1.3.6.1.4.1.2021.10.1.3.3",
 	'connections'	 	=> ".1.3.6.1.4.1.393.200.130.2.2.1.1.3",
 	'datarate'	 		=> ".1.3.6.1.4.1.393.200.130.2.2.1.1.4",
@@ -69,6 +71,8 @@ my %oid = (
 	'queuedmessages'	=> ".1.3.6.1.4.1.393.200.130.2.2.1.1.8",
 	'virtual_mem'		=> ".1.3.6.1.2.1.25.2.3.1.5.3",
 	'virtual_memused'	=> ".1.3.6.1.2.1.25.2.3.1.6.3",
+	'uptime'		=> ".1.3.6.1.2.1.25.1.1.0",
+	'sysDescr'		=> ".1.3.6.1.2.1.1.1.0",
 	);
 
 my $output = "";
@@ -142,40 +146,61 @@ for($x = 1; $x <= 3; $x++) {
 $msg .= "Total data rate: $datarate\n";
 $perfdata .= " datarate=$datarate";
 
+# Check uptime
+my $uptime;
+my $uptimereadable;
+$output = `$snmp_cmd -c $community $address $oid{'uptime'}`;
+if($output =~ /Timeticks: \(([0-9]*)\) ([a-z0-9\,\:\ ]*)/) {
+	$uptimereadable = "$2";
+	$uptime = $1;
+}
+else {
+	die "Failed to parse SNMP output from $address\n";
+}
+
+# Check  sysDescr
+my $sysDescr;
+$output = `$snmp_cmd -c $community $address $oid{'sysDescr'}`;
+if($output =~ /STRING: (.*)/) {
+	$sysDescr = $1;
+}
+else {
+	die "Failed to parse SNMP output from $address\n";
+}
 
 # Check load levels
+my $load_1;
 my $load_5;
-my $load_10;
 my $load_15;
+$output = `$snmp_cmd -c $community $address $oid{'load_1'}`;
+if($output =~ /STRING: ([0-9\.]*)/) {
+	$load_1 = $1;
+}
+else {
+	die "load5 Failed to parse SNMP output from $address\n";
+}
 $output = `$snmp_cmd -c $community $address $oid{'load_5'}`;
-if($output =~ /STRING: \"([0-9\.]*)\"/) {
+if($output =~ /STRING: ([0-9\.]*)/) {
 	$load_5 = $1;
 }
 else {
 	die "Failed to parse SNMP output from $address\n";
 }
-$output = `$snmp_cmd -c $community $address $oid{'load_10'}`;
-if($output =~ /STRING: \"([0-9\.]*)\"/) {
-	$load_10 = $1;
-}
-else {
-	die "Failed to parse SNMP output from $address\n";
-}
 $output = `$snmp_cmd -c $community $address $oid{'load_15'}`;
-if($output =~ /STRING: \"([0-9\.]*)\"/) {
+if($output =~ /STRING: ([0-9\.]*)/) {
 	$load_15 = $1;
 }
 else {
 	die "Failed to parse SNMP output from $address\n";
 }
-if($load_5 > $load_critical or $load_10 > ($load_critical-1) or $load_15 > ($load_critical-2)) {
-	$critical .= "- Load levels too high: $load_5, $load_10, $load_15";
+if($load_1 > $load_critical or $load_5 > ($load_critical-1) or $load_15 > ($load_critical-2)) {
+	$critical .= "- Load levels too high: $load_1, $load_5, $load_15";
 }
-elsif($load_5 > $load_warning or $load_10 > ($load_warning-0.25) or $load_15 > ($load_warning-0.5)) {
-	$warning .= "- Load levels too high: $load_5, $load_10, $load_15";
+elsif($load_1 > $load_warning or $load_5 > ($load_warning-0.25) or $load_15 > ($load_warning-0.5)) {
+	$warning .= "- Load levels too high: $load_1, $load_5, $load_15";
 }
-$msg .= "Load levels (5/10/15 min average): $load_5, $load_10, $load_15\n";
-$perfdata .= " load_average=$load_5;$load_warning;$load_critical";
+$msg .= "Load levels (1/5/15 min average): $load_1, $load_5, $load_15\n";
+$perfdata .= " load_average=$load_1;$load_warning;$load_critical";
 
 # Check memory usage (virtual_mem / virtual_memused)
 my $mem = 0;
@@ -206,8 +231,13 @@ if($mem_usage > $mem_critical) {
 elsif($mem_usage > $mem_warning) {
 	$warning .= " - Memory usage: $mem_usage%";
 }
-$msg .= "Memory usage: $mem_usage%";
+$msg .= "Memory usage: $mem_usage%\n";
 $perfdata .= " mem_usage=$mem_usage%;$mem_warning;$mem_critical;0;100";
+
+$msg .= "$sysDescr\n";
+
+$msg .= "Uptime: $uptimereadable\n";
+$perfdata .= " uptime=$uptime";
 
 # Return output to nagios/icinga
 if($critical ne "") {
